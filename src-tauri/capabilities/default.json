@@ -1,0 +1,123 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Full capabilities for Lados main window: Shell, Filesystem, HTTP, and Opener",
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "core:default",
+    "core:path:default",
+    "core:path:allow-resolve-directory",
+    "core:path:allow-resolve",
+    "opener:default",
+    "shell:default",
+    "shell:allow-spawn",
+    "shell:allow-kill",
+    "shell:allow-stdin-write",
+    "shell:allow-execute",
+    {
+      "identifier": "shell:allow-spawn",
+      "allow": [
+        { "name": "nginx", "cmd": "nginx", "args": true },
+        { "name": "bin-nginx", "cmd": "bin/nginx/nginx", "args": true },
+        { "name": "php-cgi", "cmd": "php-cgi", "args": true },
+        { "name": "bin-php-cgi", "cmd": "bin/php/php-cgi", "args": true },
+        { "name": "php-fpm", "cmd": "php-fpm", "args": true },
+        { "name": "php", "cmd": "php", "args": true },
+        { "name": "mysqld", "cmd": "mysqld", "args": true },
+        { "name": "bin-mysqld", "cmd": "bin/mariadb/bin/mysqld", "args": true },
+        { "name": "mariadbd", "cmd": "mariadbd", "args": true },
+        { "name": "bin-mariadbd", "cmd": "bin/mariadb/bin/mariadbd", "args": true },
+        { "name": "mkcert", "cmd": "mkcert", "args": true },
+        { "name": "bin-mkcert", "cmd": "bin/mkcert/mkcert", "args": true },
+        { "name": "cmd", "cmd": "cmd", "args": true },
+        { "name": "taskkill", "cmd": "taskkill", "args": true },
+        { "name": "powershell", "cmd": "powershell", "args": true },
+        { "name": "wt", "cmd": "wt", "args": true },
+        { "name": "composer", "cmd": "composer", "args": true },
+        { "name": "bin-composer", "cmd": "bin/composer/composer", "args": true },
+        { "name": "x-terminal-emulator", "cmd": "x-terminal-emulator", "args": true },
+        { "name": "gnome-terminal", "cmd": "gnome-terminal", "args": true },
+        { "name": "konsole", "cmd": "konsole", "args": true },
+        { "name": "xfce4-terminal", "cmd": "xfce4-terminal", "args": true },
+        { "name": "xterm", "cmd": "xterm", "args": true },
+        { "name": "pkexec", "cmd": "pkexec", "args": true },
+        { "name": "sudo", "cmd": "sudo", "args": true }
+      ]
+    },
+    {
+      "identifier": "shell:allow-execute",
+      "allow": [
+        { "name": "nginx", "cmd": "nginx", "args": true },
+        { "name": "bin-nginx", "cmd": "bin/nginx/nginx", "args": true },
+        { "name": "php-cgi", "cmd": "php-cgi", "args": true },
+        { "name": "bin-php-cgi", "cmd": "bin/php/php-cgi", "args": true },
+        { "name": "php-fpm", "cmd": "php-fpm", "args": true },
+        { "name": "php", "cmd": "php", "args": true },
+        { "name": "mysqld", "cmd": "mysqld", "args": true },
+        { "name": "bin-mysqld", "cmd": "bin/mariadb/bin/mysqld", "args": true },
+        { "name": "mariadbd", "cmd": "mariadbd", "args": true },
+        { "name": "bin-mariadbd", "cmd": "bin/mariadb/bin/mariadbd", "args": true },
+        { "name": "mkcert", "cmd": "mkcert", "args": true },
+        { "name": "bin-mkcert", "cmd": "bin/mkcert/mkcert", "args": true },
+        { "name": "cmd", "cmd": "cmd", "args": true },
+        { "name": "taskkill", "cmd": "taskkill", "args": true },
+        { "name": "powershell", "cmd": "powershell", "args": true },
+        { "name": "wt", "cmd": "wt", "args": true },
+        { "name": "composer", "cmd": "composer", "args": true },
+        { "name": "bin-composer", "cmd": "bin/composer/composer", "args": true },
+        { "name": "x-terminal-emulator", "cmd": "x-terminal-emulator", "args": true },
+        { "name": "gnome-terminal", "cmd": "gnome-terminal", "args": true },
+        { "name": "konsole", "cmd": "konsole", "args": true },
+        { "name": "xfce4-terminal", "cmd": "xfce4-terminal", "args": true },
+        { "name": "xterm", "cmd": "xterm", "args": true },
+        { "name": "pkexec", "cmd": "pkexec", "args": true },
+        { "name": "sudo", "cmd": "sudo", "args": true }
+      ]
+    },
+    "fs:default",
+    "fs:allow-read-file",
+    "fs:allow-read-text-file",
+    "fs:allow-write-file",
+    "fs:allow-write-text-file",
+    "fs:allow-read-dir",
+    "fs:allow-watch",
+    "fs:allow-mkdir",
+    "fs:allow-create",
+    "fs:allow-remove",
+    "fs:allow-rename",
+    "fs:allow-exists",
+    "fs:allow-stat",
+    "fs:allow-copy-file",
+    "fs:allow-truncate",
+    "fs:read-all",
+    "fs:write-all",
+    {
+      "identifier": "fs:scope",
+      "allow": [
+        { "path": "**" },
+        { "path": "C:\\Windows\\System32\\drivers\\etc\\hosts" },
+        { "path": "/etc/hosts" },
+        { "path": "$APPDATA/**" },
+        { "path": "$APPLOCALDATA/**" },
+        { "path": "$APPCONFIG/**" },
+        { "path": "$RESOURCE/**" },
+        { "path": "$TEMP/**" },
+        { "path": "$HOME/**" },
+        { "path": "$DOCUMENT/**" },
+        { "path": "$DOWNLOAD/**" },
+        { "path": "$DESKTOP/**" }
+      ]
+    },
+    "http:default",
+    "http:allow-fetch",
+    {
+      "identifier": "http:default",
+      "allow": [
+        { "url": "https://*/**" },
+        { "url": "http://*/**" }
+      ]
+    }
+  ]
+}
