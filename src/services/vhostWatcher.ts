@@ -1,4 +1,4 @@
-import { watch, type UnwatchFn, mkdir, writeTextFile } from "@tauri-apps/plugin-fs";
+import { watch, type UnwatchFn } from "@tauri-apps/plugin-fs";
 import { join } from "@tauri-apps/api/path";
 import {
   type WorkspaceDirectories,
@@ -9,12 +9,18 @@ import {
   type VirtualHostProject,
   scanAndSyncVirtualHosts,
 } from "./vhostScanner";
-import { generateAllConfigs, writeVirtualHostConfig } from "./configGenerator";
+import { generateAllConfigs } from "./configGenerator";
 import { processManager } from "./processManager";
 import { syncHostsDomains } from "./hostsManager";
-import { sslManager } from "./sslManager";
+import {
+  createSampleScaffold,
+  createMockSampleProject,
+  autoGenerateProjectsSsl,
+  type SampleProjectType,
+} from "./vhostScaffolder";
 
 export type ProjectsListener = (projects: VirtualHostProject[]) => void;
+export type { SampleProjectType };
 
 class VhostWatcherService {
   private unwatchFn: UnwatchFn | null = null;
@@ -44,74 +50,27 @@ class VhostWatcherService {
     }
   }
 
-  /**
-   * Initializes virtual hosts:
-   * 1. Writes base configs in etc/nginx/nginx.conf, etc/php/php.ini, etc/mariadb/my.ini.
-   * 2. Scans www/ for projects and syncs etc/nginx/sites-enabled/.
-   * 3. Syncs hosts file with Lados domains.
-   * 4. Starts real-time watcher on www/.
-   */
   public async init(): Promise<VirtualHostProject[]> {
     const dirs = await getWorkspaceDirectories();
-
-    // 1. Ensure master configs exist with normalized forward-slash paths
     await generateAllConfigs(dirs);
 
-    // 2. Perform initial scan and synchronization
     const result = await scanAndSyncVirtualHosts(dirs, this.currentProjects);
     this.currentProjects = result.projects;
 
-    // 3. Auto-generate SSL with mkcert for projects lacking certificates
-    await this.autoGenerateSsl(dirs);
-
-    // 4. Synchronize hosts file inside # >>> LADOS DOMAINS START >>>
+    await autoGenerateProjectsSsl(this.currentProjects, dirs);
     await this.syncSystemHosts();
 
     this.notifyListeners();
-
-    // 5. Start real-time filesystem watcher
     await this.startWatcher(dirs);
 
     return this.currentProjects;
   }
 
-  /**
-   * Auto-generates local trusted SSL certificates for projects using mkcert.
-   */
-  private async autoGenerateSsl(dirs: WorkspaceDirectories): Promise<boolean> {
-    const mkcertStatus = await sslManager.checkMkcert(dirs);
-    if (!mkcertStatus.available) {
-      return false;
-    }
-
-    let generatedAny = false;
-
-    for (const project of this.currentProjects) {
-      if (!project.hasSsl) {
-        const certRes = await sslManager.generateCertificate(project.domain, dirs);
-        if (certRes.success) {
-          project.hasSsl = true;
-          generatedAny = true;
-          // Re-write Nginx virtual host config with SSL port 443 enabled
-          await writeVirtualHostConfig(project, dirs, true);
-        }
-      }
-    }
-
-    return generatedAny;
-  }
-
-  /**
-   * Synchronizes system hosts file with current Lados project domains.
-   */
   public async syncSystemHosts(requestElevation = false): Promise<void> {
     const domains = this.currentProjects.map((p) => p.domain);
     await syncHostsDomains(domains, requestElevation);
   }
 
-  /**
-   * Starts watching www/ using watch() from @tauri-apps/plugin-fs.
-   */
   public async startWatcher(dirs?: WorkspaceDirectories): Promise<boolean> {
     if (this.isWatching) {
       return true;
@@ -151,9 +110,6 @@ class VhostWatcherService {
     }
   }
 
-  /**
-   * Stops the filesystem watcher.
-   */
   public stopWatcher(): void {
     if (this.unwatchFn) {
       try {
@@ -167,9 +123,6 @@ class VhostWatcherService {
     processManager.emitLog("nginx", "system", "[Watcher] Virtual Host watcher stopped.");
   }
 
-  /**
-   * Debounced change handler when www/ modifications are detected.
-   */
   private handleDirectoryChange(dirs: WorkspaceDirectories): void {
     if (this.debounceTimer !== null) {
       window.clearTimeout(this.debounceTimer);
@@ -181,9 +134,6 @@ class VhostWatcherService {
     }, 800);
   }
 
-  /**
-   * Scans www/, synchronizes sites-enabled/, hosts, and SSL, then reloads Nginx.
-   */
   public async scanAndSync(dirs?: WorkspaceDirectories): Promise<VirtualHostProject[]> {
     const workspaceDirs = dirs || (await getWorkspaceDirectories());
     const oldProjects = [...this.currentProjects];
@@ -191,14 +141,12 @@ class VhostWatcherService {
     const result = await scanAndSyncVirtualHosts(workspaceDirs, oldProjects);
     this.currentProjects = result.projects;
 
-    // Check for newly added projects
     const oldNames = new Set(oldProjects.map((p) => p.name));
     const newProjects = result.projects.filter((p) => !oldNames.has(p.name));
 
-    // Auto-generate SSL for new projects
     let sslGenerated = false;
     if (newProjects.length > 0) {
-      sslGenerated = await this.autoGenerateSsl(workspaceDirs);
+      sslGenerated = await autoGenerateProjectsSsl(this.currentProjects, workspaceDirs);
     }
 
     this.notifyListeners();
@@ -206,7 +154,6 @@ class VhostWatcherService {
     if (result.hasChanges || sslGenerated) {
       const newNames = new Set(result.projects.map((p) => p.name));
 
-      // Report additions
       for (const p of result.projects) {
         if (!oldNames.has(p.name)) {
           processManager.emitLog(
@@ -217,29 +164,22 @@ class VhostWatcherService {
         }
       }
 
-      // Report removals
       for (const p of oldProjects) {
         if (!newNames.has(p.name)) {
           processManager.emitLog("nginx", "system", `[Virtual Host] Removed: ${p.name} (http://${p.domain})`);
         }
       }
 
-      // Sync hosts file
       await this.syncSystemHosts();
-
-      // Automatically hot-reload Nginx
       await processManager.reloadNginx();
     }
 
     return this.currentProjects;
   }
 
-  /**
-   * Helper utility to create a sample project inside www/ to test the auto-scanner and watcher.
-   */
   public async createSampleProject(
     projectName: string,
-    type: "laravel" | "wordpress" | "native"
+    type: SampleProjectType
   ): Promise<VirtualHostProject | null> {
     const dirs = await getWorkspaceDirectories();
     const sanitizedName = projectName.toLowerCase().replace(/[^a-z0-9_-]/g, "");
@@ -250,27 +190,7 @@ class VhostWatcherService {
       : `${dirs.www}/${sanitizedName}`;
 
     if (!isTauri()) {
-      // Mock creation
-      const mockFramework = type === "laravel" ? "Laravel" : type === "wordpress" ? "WordPress" : "Native PHP";
-      const docRoot = type === "laravel" ? `${projectDir}/public` : projectDir;
-      const domain = `${sanitizedName}.test`;
-
-      // Auto generate simulated cert
-      await sslManager.generateCertificate(domain, dirs);
-
-      const newProject: VirtualHostProject = {
-        name: sanitizedName,
-        domain,
-        framework: mockFramework,
-        projectPath: projectDir,
-        documentRoot: docRoot,
-        hasIndexPhp: true,
-        hasIndexHtml: false,
-        configFile: `${dirs.etcNginxSites}/${sanitizedName}.conf`,
-        detectedAt: new Date().toLocaleTimeString(),
-        hasSsl: true,
-      };
-
+      const newProject = await createMockSampleProject(sanitizedName, type, dirs);
       this.currentProjects.push(newProject);
       await this.syncSystemHosts();
       this.notifyListeners();
@@ -278,42 +198,14 @@ class VhostWatcherService {
       processManager.emitLog(
         "nginx",
         "system",
-        `[Virtual Host] Sample project created: ${sanitizedName} (${mockFramework}) -> http://${domain} (HTTPS Active)`
+        `[Virtual Host] Sample project created: ${sanitizedName} (${newProject.framework}) -> http://${newProject.domain} (HTTPS Active)`
       );
       await processManager.reloadNginx();
       return newProject;
     }
 
     try {
-      await mkdir(projectDir, { recursive: true });
-
-      if (type === "laravel") {
-        const publicDir = await join(projectDir, "public");
-        await mkdir(publicDir, { recursive: true });
-        // artisan file
-        await writeTextFile(await join(projectDir, "artisan"), "#!/usr/bin/env php\n<?php // Laravel Console");
-        // public/index.php
-        await writeTextFile(
-          await join(publicDir, "index.php"),
-          `<?php\n// Laravel Front Controller for ${sanitizedName}\necho "<h1>Hello from Laravel (${sanitizedName}.test)</h1><p>Running on LADOS Local Server</p>";`
-        );
-      } else if (type === "wordpress") {
-        await writeTextFile(
-          await join(projectDir, "wp-config.php"),
-          `<?php\n// WordPress Configuration for ${sanitizedName}\ndefine('DB_NAME', '${sanitizedName}_db');\ndefine('DB_USER', 'root');\ndefine('DB_PASSWORD', '');\ndefine('DB_HOST', '127.0.0.1');`
-        );
-        await writeTextFile(
-          await join(projectDir, "index.php"),
-          `<?php\n// WordPress Front Controller for ${sanitizedName}\necho "<h1>Hello from WordPress (${sanitizedName}.test)</h1><p>Running on LADOS Local Server</p>";`
-        );
-      } else {
-        await writeTextFile(
-          await join(projectDir, "index.php"),
-          `<?php\n// Native PHP for ${sanitizedName}\necho "<h1>Welcome to ${sanitizedName}.test</h1><p>PHP " . phpversion() . " on LADOS Local Server</p>";`
-        );
-      }
-
-      // Trigger sync
+      await createSampleScaffold(projectDir, sanitizedName, type);
       await this.scanAndSync(dirs);
       return this.currentProjects.find((p) => p.name === sanitizedName) || null;
     } catch (err) {
