@@ -1,7 +1,6 @@
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
-import { exists, mkdir, writeFile } from "@tauri-apps/plugin-fs";
+import { exists, mkdir } from "@tauri-apps/plugin-fs";
 import { join } from "@tauri-apps/api/path";
-import JSZip from "jszip";
 import {
   type WorkspaceDirectories,
   getWorkspaceDirectories,
@@ -9,219 +8,23 @@ import {
   normalizePath,
 } from "./workspace";
 import { processManager } from "./processManager";
+import {
+  type BinaryCategory,
+  type CatalogItem,
+  type DownloadProgress,
+  type InstalledBinaryInfo,
+  BINARY_CATALOG,
+  formatBytes,
+} from "./binaryCatalog";
+import {
+  extractZipArchive,
+  saveSingleBinary,
+  simulateDownload,
+} from "./binaryExtractor";
 
-export type BinaryCategory = "php" | "nginx" | "mariadb" | "composer" | "mkcert";
-
-export interface CatalogItem {
-  id: string;
-  name: string;
-  category: BinaryCategory;
-  version: string;
-  description: string;
-  sizeEstimateBytes?: number;
-  downloadUrl: {
-    windows: string;
-    linux?: string;
-  };
-  targetSubdir: string;
-  isZip: boolean;
-  executableName: {
-    windows: string;
-    linux: string;
-  };
-}
-
-export interface DownloadProgress {
-  itemId: string;
-  stage: "idle" | "downloading" | "extracting" | "verifying" | "completed" | "error";
-  bytesDownloaded: number;
-  totalBytes: number;
-  percentage: number;
-  speedBytesPerSec: number;
-  message: string;
-  error?: string;
-}
-
-export interface InstalledBinaryInfo {
-  id: string;
-  category: BinaryCategory;
-  installed: boolean;
-  version?: string;
-  executablePath?: string;
-}
-
-/**
- * Official portable binary catalog for Lados stack.
- */
-export const BINARY_CATALOG: CatalogItem[] = [
-  {
-    id: "php-8.4",
-    name: "PHP 8.4 (NTS x64)",
-    category: "php",
-    version: "8.4.4",
-    description: "Latest PHP release with property hooks, asymmetric visibility, and modern JIT.",
-    sizeEstimateBytes: 31 * 1024 * 1024,
-    downloadUrl: {
-      windows: "https://windows.php.net/downloads/releases/php-8.4.4-nts-Win32-vs16-x64.zip",
-    },
-    targetSubdir: "php",
-    isZip: true,
-    executableName: {
-      windows: "php-cgi.exe",
-      linux: "php-fpm",
-    },
-  },
-  {
-    id: "php-8.3",
-    name: "PHP 8.3 (NTS x64)",
-    category: "php",
-    version: "8.3.17",
-    description: "Stable modern PHP release with typed class constants and json_validate().",
-    sizeEstimateBytes: 30 * 1024 * 1024,
-    downloadUrl: {
-      windows: "https://windows.php.net/downloads/releases/php-8.3.17-nts-Win32-vs16-x64.zip",
-    },
-    targetSubdir: "php",
-    isZip: true,
-    executableName: {
-      windows: "php-cgi.exe",
-      linux: "php-fpm",
-    },
-  },
-  {
-    id: "php-8.2",
-    name: "PHP 8.2 (NTS x64)",
-    category: "php",
-    version: "8.2.27",
-    description: "LTS release with readonly classes and standalone null/false/true types.",
-    sizeEstimateBytes: 30 * 1024 * 1024,
-    downloadUrl: {
-      windows: "https://windows.php.net/downloads/releases/php-8.2.27-nts-Win32-vs16-x64.zip",
-    },
-    targetSubdir: "php",
-    isZip: true,
-    executableName: {
-      windows: "php-cgi.exe",
-      linux: "php-fpm",
-    },
-  },
-  {
-    id: "nginx-1.26",
-    name: "Nginx 1.26 (Stable)",
-    category: "nginx",
-    version: "1.26.3",
-    description: "High-performance HTTP server and reverse proxy (Stable branch).",
-    sizeEstimateBytes: 2 * 1024 * 1024,
-    downloadUrl: {
-      windows: "https://nginx.org/download/nginx-1.26.3.zip",
-    },
-    targetSubdir: "nginx",
-    isZip: true,
-    executableName: {
-      windows: "nginx.exe",
-      linux: "nginx",
-    },
-  },
-  {
-    id: "nginx-1.27",
-    name: "Nginx 1.27 (Mainline)",
-    category: "nginx",
-    version: "1.27.4",
-    description: "Mainline branch featuring HTTP/3 (QUIC) and latest features.",
-    sizeEstimateBytes: 2 * 1024 * 1024,
-    downloadUrl: {
-      windows: "https://nginx.org/download/nginx-1.27.4.zip",
-    },
-    targetSubdir: "nginx",
-    isZip: true,
-    executableName: {
-      windows: "nginx.exe",
-      linux: "nginx",
-    },
-  },
-  {
-    id: "mariadb-11.4",
-    name: "MariaDB 11.4 (LTS)",
-    category: "mariadb",
-    version: "11.4.5",
-    description: "Long-Term Support relational database server with optimized InnoDB engine.",
-    sizeEstimateBytes: 85 * 1024 * 1024,
-    downloadUrl: {
-      windows: "https://downloads.mariadb.org/rest-api/mariadb/11.4.5/mariadb-11.4.5-winx64.zip",
-    },
-    targetSubdir: "mariadb",
-    isZip: true,
-    executableName: {
-      windows: "bin/mysqld.exe",
-      linux: "bin/mariadbd",
-    },
-  },
-  {
-    id: "composer-v2",
-    name: "Composer 2.8",
-    category: "composer",
-    version: "2.8.5",
-    description: "Dependency Manager for PHP packages and modern framework ecosystems.",
-    sizeEstimateBytes: 3 * 1024 * 1024,
-    downloadUrl: {
-      windows: "https://getcomposer.org/composer-stable.phar",
-      linux: "https://getcomposer.org/composer-stable.phar",
-    },
-    targetSubdir: "composer",
-    isZip: false,
-    executableName: {
-      windows: "composer.phar",
-      linux: "composer.phar",
-    },
-  },
-  {
-    id: "mkcert-v1.4",
-    name: "mkcert 1.4.4",
-    category: "mkcert",
-    version: "1.4.4",
-    description: "Zero-config tool for generating locally-trusted SSL certificates.",
-    sizeEstimateBytes: 4 * 1024 * 1024,
-    downloadUrl: {
-      windows: "https://github.com/FiloSottile/mkcert/releases/download/v1.4.4/mkcert-v1.4.4-windows-amd64.exe",
-      linux: "https://github.com/FiloSottile/mkcert/releases/download/v1.4.4/mkcert-v1.4.4-linux-amd64",
-    },
-    targetSubdir: "mkcert",
-    isZip: false,
-    executableName: {
-      windows: "mkcert.exe",
-      linux: "mkcert",
-    },
-  },
-];
-
-/**
- * Formats raw bytes into human readable string (KB, MB, GB).
- */
-export function formatBytes(bytes: number): string {
-  if (bytes === 0) return "0 B";
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
-}
-
-/**
- * Detects if all files in a zip share a common single root directory
- * (e.g. nginx-1.26.3/ or mariadb-11.4.5-winx64/) and returns that prefix to strip.
- */
-function detectCommonPrefix(zipPaths: string[]): string {
-  const validPaths = zipPaths.filter((p) => p && !p.startsWith("__MACOSX") && !p.startsWith("."));
-  if (validPaths.length === 0) return "";
-
-  const firstSlashIdx = validPaths[0].indexOf("/");
-  if (firstSlashIdx === -1) return "";
-
-  const candidatePrefix = validPaths[0].substring(0, firstSlashIdx + 1);
-
-  // Check if every path begins with candidatePrefix
-  const allMatch = validPaths.every((p) => p.startsWith(candidatePrefix));
-  return allMatch ? candidatePrefix : "";
-}
+// Re-export all catalog items, formatting helpers, and interfaces for zero-breaking changes
+export type { BinaryCategory, CatalogItem, DownloadProgress, InstalledBinaryInfo };
+export { BINARY_CATALOG, formatBytes };
 
 class BinaryDownloaderService {
   /**
@@ -297,57 +100,18 @@ class BinaryDownloaderService {
       }
     }
 
-    // =========================================================================
     // Simulation Mode for Browser Previews
-    // =========================================================================
     if (!isTauri()) {
-      const totalBytes = item.sizeEstimateBytes || 15 * 1024 * 1024;
-      const steps = 10;
-      for (let i = 1; i <= steps; i++) {
-        await new Promise((resolve) => setTimeout(resolve, 150));
-        const currentBytes = Math.round((totalBytes / steps) * i);
-        const percentage = Math.round((i / steps) * 100);
-        onProgress?.({
-          itemId: item.id,
-          stage: i < steps ? "downloading" : "extracting",
-          bytesDownloaded: currentBytes,
-          totalBytes,
-          percentage,
-          speedBytesPerSec: 2.5 * 1024 * 1024,
-          message: i < steps
-            ? `Downloading ${item.name}... (${formatBytes(currentBytes)} / ${formatBytes(totalBytes)})`
-            : `Extracting ${item.name} to ${item.targetSubdir}/...`,
-        });
-      }
-
-      const stored = localStorage.getItem("lados_installed_binaries") || "[]";
-      const installedList = JSON.parse(stored) as string[];
-      if (!installedList.includes(item.id)) {
-        installedList.push(item.id);
-        localStorage.setItem("lados_installed_binaries", JSON.stringify(installedList));
-      }
-
-      onProgress?.({
-        itemId: item.id,
-        stage: "completed",
-        bytesDownloaded: totalBytes,
-        totalBytes,
-        percentage: 100,
-        speedBytesPerSec: 0,
-        message: `Successfully installed ${item.name}!`,
-      });
-
+      const success = await simulateDownload(item, onProgress);
       processManager.emitLog(
         "system",
         "system",
         `[Downloader] [Simulation Mode] Successfully downloaded and installed ${item.name}.`
       );
-      return true;
+      return success;
     }
 
-    // =========================================================================
     // Native Tauri Download via @tauri-apps/plugin-http
-    // =========================================================================
     try {
       onProgress?.({
         itemId: item.id,
@@ -425,102 +189,14 @@ class BinaryDownloaderService {
         `[Downloader] Download completed (${formatBytes(bytesDownloaded)}). Preparing extraction...`
       );
 
-      // =========================================================================
-      // Extraction via JSZip for zip archives
-      // =========================================================================
+      // Extraction via JSZip for zip archives or single binary write
       if (item.isZip) {
-        onProgress?.({
-          itemId: item.id,
-          stage: "extracting",
-          bytesDownloaded,
-          totalBytes,
-          percentage: 100,
-          speedBytesPerSec: 0,
-          message: `Unpacking archive for ${item.name}...`,
-        });
-
-        const zip = await JSZip.loadAsync(fullBuffer);
-        const fileNames = Object.keys(zip.files);
-        const prefixToStrip = detectCommonPrefix(fileNames);
-
-        let extractedCount = 0;
-        const totalFiles = fileNames.length;
-
-        for (const [relativePath, zipEntry] of Object.entries(zip.files)) {
-          extractedCount++;
-
-          // Strip common root folder if present
-          let cleanRelPath = relativePath;
-          if (prefixToStrip && cleanRelPath.startsWith(prefixToStrip)) {
-            cleanRelPath = cleanRelPath.substring(prefixToStrip.length);
-          }
-
-          if (!cleanRelPath || cleanRelPath.endsWith("/")) {
-            // Directory entry
-            const dirPath = normalizePath(await join(targetFolder, cleanRelPath));
-            const dirExists = await exists(dirPath);
-            if (!dirExists) {
-              await mkdir(dirPath, { recursive: true });
-            }
-            continue;
-          }
-
-          // File entry
-          const destFilePath = normalizePath(await join(targetFolder, cleanRelPath));
-          const fileData = await zipEntry.async("uint8array");
-
-          // Ensure parent directory exists
-          const lastSlash = destFilePath.lastIndexOf("/");
-          if (lastSlash !== -1) {
-            const parentDir = destFilePath.substring(0, lastSlash);
-            const parentExists = await exists(parentDir);
-            if (!parentExists) {
-              await mkdir(parentDir, { recursive: true });
-            }
-          }
-
-          await writeFile(destFilePath, fileData);
-
-          if (extractedCount % 10 === 0 || extractedCount === totalFiles) {
-            onProgress?.({
-              itemId: item.id,
-              stage: "extracting",
-              bytesDownloaded,
-              totalBytes,
-              percentage: Math.round((extractedCount / totalFiles) * 100),
-              speedBytesPerSec: 0,
-              message: `Extracting ${item.name}: ${extractedCount}/${totalFiles} files`,
-            });
-          }
-        }
+        await extractZipArchive(item, fullBuffer, targetFolder, bytesDownloaded, totalBytes, onProgress);
       } else {
-        // Direct single binary download (e.g. composer.phar or mkcert.exe)
-        onProgress?.({
-          itemId: item.id,
-          stage: "extracting",
-          bytesDownloaded,
-          totalBytes,
-          percentage: 100,
-          speedBytesPerSec: 0,
-          message: `Saving binary for ${item.name}...`,
-        });
-
-        const exeName = isWindows ? item.executableName.windows : item.executableName.linux;
-        const destFilePath = normalizePath(await join(targetFolder, exeName));
-        await writeFile(destFilePath, fullBuffer);
-
-        // If composer on Windows, create a composer.bat launcher
-        if (item.category === "composer" && isWindows) {
-          const batPath = normalizePath(await join(targetFolder, "composer.bat"));
-          const batContent = `@echo off\r\nphp "%~dp0composer.phar" %*\r\n`;
-          const encoder = new TextEncoder();
-          await writeFile(batPath, encoder.encode(batContent));
-        }
+        await saveSingleBinary(item, fullBuffer, targetFolder, isWindows, bytesDownloaded, totalBytes, onProgress);
       }
 
-      // =========================================================================
       // Verification
-      // =========================================================================
       onProgress?.({
         itemId: item.id,
         stage: "verifying",
