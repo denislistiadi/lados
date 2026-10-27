@@ -23,6 +23,7 @@ export interface LadosState {
   lastOpenedAt: string;
   workspaceRoot: string;
   activePhpVersion?: string;
+  activePhpPath?: string;
   services: {
     nginx: LadosServiceState;
     php: LadosServiceState;
@@ -104,9 +105,20 @@ export async function loadState(): Promise<LadosState> {
     return createDefaultState(dirs.root);
   }
 
-  const content = await readTextFile(statePath);
-  cachedState = JSON.parse(content);
-  return cachedState!;
+  try {
+    const content = await readTextFile(statePath);
+    cachedState = JSON.parse(content);
+    return cachedState!;
+  } catch {
+    const defaultState = createDefaultState(dirs.root);
+    cachedState = defaultState;
+    try {
+      await writeTextFile(statePath, JSON.stringify(defaultState, null, 2));
+    } catch (writeErr) {
+      console.warn("Failed to write initial state.json in loadState fallback:", writeErr);
+    }
+    return defaultState;
+  }
 }
 
 /**
