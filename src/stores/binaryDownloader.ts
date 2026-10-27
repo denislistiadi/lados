@@ -11,6 +11,7 @@ import {
   type TerminalLaunchResult,
   openIsolatedTerminal,
 } from "../services/isolatedTerminal";
+import { loadState } from "../services/workspace";
 
 export const useBinaryDownloaderStore = defineStore("binaryDownloader", () => {
   const catalog = ref<CatalogItem[]>(BINARY_CATALOG);
@@ -74,7 +75,8 @@ export const useBinaryDownloaderStore = defineStore("binaryDownloader", () => {
    * Opens the isolated terminal in the specified or default directory.
    */
   async function launchTerminal(workingDir?: string): Promise<TerminalLaunchResult> {
-    const result = await openIsolatedTerminal(workingDir);
+    const state = await loadState();
+    const result = await openIsolatedTerminal(workingDir, state.activePhpPath);
     lastTerminalResult.value = result;
     return result;
   }

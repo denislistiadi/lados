@@ -52,7 +52,7 @@ export const BINARY_CATALOG: CatalogItem[] = [
     downloadUrl: {
       windows: "https://windows.php.net/downloads/releases/php-8.4.4-nts-Win32-vs16-x64.zip",
     },
-    targetSubdir: "php",
+    targetSubdir: "php/8.4",
     isZip: true,
     executableName: {
       windows: "php-cgi.exe",
@@ -69,7 +69,7 @@ export const BINARY_CATALOG: CatalogItem[] = [
     downloadUrl: {
       windows: "https://windows.php.net/downloads/releases/php-8.3.17-nts-Win32-vs16-x64.zip",
     },
-    targetSubdir: "php",
+    targetSubdir: "php/8.3",
     isZip: true,
     executableName: {
       windows: "php-cgi.exe",
@@ -86,7 +86,7 @@ export const BINARY_CATALOG: CatalogItem[] = [
     downloadUrl: {
       windows: "https://windows.php.net/downloads/releases/php-8.2.27-nts-Win32-vs16-x64.zip",
     },
-    targetSubdir: "php",
+    targetSubdir: "php/8.2",
     isZip: true,
     executableName: {
       windows: "php-cgi.exe",

@@ -55,13 +55,24 @@ class BinaryDownloaderService {
     }
 
     try {
-      const isPresent = await exists(targetExe);
+      let isPresent = await exists(targetExe);
+      let foundPath = isPresent ? targetExe : undefined;
+
+      // Fallback check for PHP in legacy bin/php directly
+      if (!isPresent && item.category === "php") {
+        const rootPhpExe = normalizePath(await join(workspaceDirs.bin, "php", exeName));
+        if (await exists(rootPhpExe)) {
+          isPresent = true;
+          foundPath = rootPhpExe;
+        }
+      }
+
       return {
         id: item.id,
         category: item.category,
         installed: isPresent,
         version: item.version,
-        executablePath: isPresent ? targetExe : undefined,
+        executablePath: foundPath,
       };
     } catch {
       return {
