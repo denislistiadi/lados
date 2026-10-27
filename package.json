@@ -1,13 +1,14 @@
 {
   "name": "lados",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.0.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "prepare:bundle": "node scripts/prepare-bundle.mjs"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.3",

@@ -25,6 +25,7 @@ dist-ssr
 
 # Lados runtime directories & state
 /bin/
+/src-tauri/bin/
 /data/
 /logs/
 /tmp/
