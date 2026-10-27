@@ -1,4 +1,5 @@
-import { executableDir, join, resolve } from "@tauri-apps/api/path";
+import { resourceDir, join, resolve } from "@tauri-apps/api/path";
+import { exists } from "@tauri-apps/plugin-fs";
 
 export interface WorkspaceDirectories {
   root: string;
@@ -43,7 +44,7 @@ export function normalizePath(pathStr: string): string {
 
 /**
  * Resolves the root portable application directory.
- * In production/portable mode, this is the folder containing the executable.
+ * In production/portable mode, this is the folder containing the executable and bundled resources.
  * In development mode, if running from src-tauri/target/..., resolves to the project root.
  */
 export async function getAppDirectory(): Promise<string> {
@@ -57,8 +58,8 @@ export async function getAppDirectory(): Promise<string> {
   }
 
   try {
-    const rawExeDir = await executableDir();
-    let normalized = normalizePath(rawExeDir);
+    const rawResDir = await resourceDir();
+    let normalized = normalizePath(rawResDir);
 
     // If running in development (e.g. target/debug or target/release inside src-tauri)
     const targetIdx = normalized.toLowerCase().indexOf("/src-tauri/target");
@@ -73,14 +74,14 @@ export async function getAppDirectory(): Promise<string> {
       }
     }
   } catch (error) {
-    console.warn("Failed to get executableDir, trying resolve fallback:", error);
+    console.warn("Failed to get resourceDir, trying resolve fallback:", error);
     try {
-      const resolved = normalizePath(await resolve(".."));
-      const srcTauriIdx = resolved.toLowerCase().indexOf("/src-tauri");
+      const current = normalizePath(await resolve("."));
+      const srcTauriIdx = current.toLowerCase().indexOf("/src-tauri");
       if (srcTauriIdx !== -1) {
-        cachedRoot = resolved.substring(0, srcTauriIdx);
+        cachedRoot = current.substring(0, srcTauriIdx);
       } else {
-        cachedRoot = resolved.replace(/\/+$/, "");
+        cachedRoot = current.replace(/\/+$/, "");
       }
     } catch {
       cachedRoot = "D:/personal/lados";
@@ -131,8 +132,16 @@ export async function getWorkspaceDirectories(): Promise<WorkspaceDirectories> {
     return cachedDirectories;
   }
 
-  const [bin, etc, www, logs, tmp, data] = await Promise.all([
-    join(root, "bin"),
+  const directBin = await join(root, "bin");
+  const upBin = await join(root, "_up_", "bin");
+  let bin = directBin;
+  try {
+    if (isTauri() && (await exists(upBin)) && !(await exists(directBin))) {
+      bin = upBin;
+    }
+  } catch {}
+
+  const [etc, www, logs, tmp, data] = await Promise.all([
     join(root, "etc"),
     join(root, "www"),
     join(root, "logs"),
