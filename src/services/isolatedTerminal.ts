@@ -21,11 +21,12 @@ export interface TerminalLaunchResult {
  * Launches an isolated terminal session with Lados binaries (PHP, Nginx, MariaDB, Composer, mkcert)
  * placed at the very front of the system PATH.
  */
-export async function openIsolatedTerminal(workingDir?: string): Promise<TerminalLaunchResult> {
+export async function openIsolatedTerminal(workingDir?: string, activePhpDir?: string): Promise<TerminalLaunchResult> {
   const dirs = await getWorkspaceDirectories();
   const isWindows = typeof navigator !== "undefined" && navigator.userAgent.toLowerCase().includes("windows");
 
   const targetDir = normalizePath(workingDir || dirs.www);
+  const effectivePhp = activePhpDir || dirs.binPhp;
 
   if (!isTauri()) {
     processManager.emitLog(
@@ -37,7 +38,7 @@ export async function openIsolatedTerminal(workingDir?: string): Promise<Termina
       success: true,
       terminalType: "simulated",
       workingDir: targetDir,
-      customPath: `${dirs.binPhp};${dirs.binNginx};${dirs.binMariadb}/bin;${dirs.binComposer};${dirs.binMkcert}`,
+      customPath: `${effectivePhp};${dirs.binNginx};${dirs.binMariadb}/bin;${dirs.binComposer};${dirs.binMkcert}`,
     };
   }
 
@@ -45,7 +46,7 @@ export async function openIsolatedTerminal(workingDir?: string): Promise<Termina
   // WINDOWS TERMINAL / CMD
   // =========================================================================
   if (isWindows) {
-    const phpWin = dirs.binPhp.replace(/\//g, "\\");
+    const phpWin = effectivePhp.replace(/\//g, "\\");
     const nginxWin = dirs.binNginx.replace(/\//g, "\\");
     const mariadbWin = `${dirs.binMariadb.replace(/\//g, "\\")}\\bin`;
     const composerWin = dirs.binComposer.replace(/\//g, "\\");
@@ -153,7 +154,7 @@ cmd.exe /k
   // LINUX DEFAULT TERMINAL EMULATOR
   // =========================================================================
   const linuxLadosPath = [
-    dirs.binPhp,
+    effectivePhp,
     dirs.binNginx,
     `${dirs.binMariadb}/bin`,
     dirs.binComposer,
