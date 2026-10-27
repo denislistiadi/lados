@@ -18,6 +18,7 @@ import {
 const emit = defineEmits<{
   (e: "openDownloader"): void;
   (e: "openSslModal"): void;
+  (e: "openPhpSettings"): void;
 }>();
 
 const workspaceStore = useWorkspaceStore();
@@ -25,11 +26,22 @@ const processStore = useProcessManager();
 const downloaderStore = useBinaryDownloaderStore();
 
 const showPhpDropdown = ref(false);
-const phpVersions = [
-  { id: "8.4", label: "PHP 8.4", badge: "Latest", desc: "Property hooks, JIT optimizations" },
-  { id: "8.3", label: "PHP 8.3", badge: "Stable", desc: "Typed constants, json_validate" },
-  { id: "8.2", label: "PHP 8.2", badge: "LTS", desc: "Readonly classes, mature stability" },
-];
+
+const availablePhpVersions = computed(() => {
+  if (workspaceStore.phpVersions.length > 0) {
+    return workspaceStore.phpVersions.map((v) => ({
+      id: v.id,
+      label: v.label,
+      badge: v.isCustom ? "Custom" : (v.id === "8.4" ? "Latest" : v.id === "8.3" ? "Stable" : "LTS"),
+      desc: v.isCustom ? v.path.replace(/^.*[\\/]/, "bin/php/") : (v.id === "8.4" ? "Property hooks, JIT" : v.id === "8.3" ? "Typed constants" : "Legacy compatibility"),
+    }));
+  }
+  return [
+    { id: "8.4", label: "PHP 8.4", badge: "Latest", desc: "Property hooks, JIT optimizations" },
+    { id: "8.3", label: "PHP 8.3", badge: "Stable", desc: "Typed constants, json_validate" },
+    { id: "8.2", label: "PHP 8.2", badge: "LTS", desc: "Readonly classes, mature stability" },
+  ];
+});
 
 const globalStatus = computed(() => {
   if (processStore.isAllRunning) {
@@ -76,7 +88,7 @@ async function selectPhpVersion(version: string) {
         <div class="flex items-center gap-2">
           <h1 class="text-xl font-extrabold tracking-tight text-white font-mono">LADOS</h1>
           <span class="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/25 font-semibold uppercase tracking-wider">
-            v0.1.0 Bento
+            v0.0.1 Bento
           </span>
         </div>
         <p class="text-xs text-slate-400 font-medium">Portable Local Web Server Stack &bull; Pure TypeScript</p>
@@ -116,7 +128,7 @@ async function selectPhpVersion(version: string) {
           </div>
 
           <button
-            v-for="ver in phpVersions"
+            v-for="ver in availablePhpVersions"
             :key="ver.id"
             @click="selectPhpVersion(ver.id)"
             class="w-full p-2.5 rounded-xl text-left transition flex items-start justify-between gap-2"
@@ -131,13 +143,22 @@ async function selectPhpVersion(version: string) {
                   {{ ver.badge }}
                 </span>
               </div>
-              <p class="text-[11px] text-slate-400 mt-0.5">{{ ver.desc }}</p>
+              <p class="text-[11px] text-slate-400 mt-0.5 truncate max-w-[190px]">{{ ver.desc }}</p>
             </div>
             <CheckCircle2
               v-if="workspaceStore.activePhpVersion === ver.id"
               class="w-4 h-4 text-emerald-400 shrink-0 mt-0.5"
             />
           </button>
+
+          <div class="pt-1 border-t border-white/5">
+            <button
+              @click="emit('openPhpSettings'); showPhpDropdown = false;"
+              class="w-full py-1.5 px-2 rounded-lg text-left text-[11px] text-indigo-300 hover:text-white hover:bg-indigo-600/20 font-semibold flex items-center justify-between transition"
+            >
+              <span>+ Pasang / Kelola Versi PHP...</span>
+            </button>
+          </div>
         </div>
       </div>
 

@@ -52,9 +52,12 @@ async function handleMasterToggle() {
 
 // Quick PHP Switcher: Cycles through PHP versions
 async function handleCyclePhp() {
-  const currentIndex = phpOptions.indexOf(workspaceStore.activePhpVersion);
-  const nextIndex = (currentIndex + 1) % phpOptions.length;
-  const newVer = phpOptions[nextIndex];
+  const options = workspaceStore.phpVersions.length > 0
+    ? workspaceStore.phpVersions.map((v) => v.id)
+    : phpOptions;
+  const currentIndex = options.indexOf(workspaceStore.activePhpVersion);
+  const nextIndex = (currentIndex + 1) % options.length;
+  const newVer = options[nextIndex];
   await workspaceStore.setPhpVersion(newVer);
 
   if (processStore.services.php.status === "running") {
@@ -88,7 +91,7 @@ function openSettingsTab(tab: SettingsTab) {
             <div class="flex items-center gap-1.5">
               <h1 class="text-base font-extrabold tracking-tight text-white font-mono">LADOS</h1>
               <span class="text-[10px] px-1.5 py-0.2 rounded-full bg-cyan-500/10 text-cyan-400 font-semibold border border-cyan-500/20">
-                v0.1.0
+                v0.0.1
               </span>
             </div>
             <p class="text-[10px] text-slate-400">Local Server Stack</p>
