@@ -4,7 +4,7 @@ import { type WorkspaceDirectories, normalizePath } from "../workspace";
  * Builds standard MariaDB my.ini configuration with absolute forward-slash paths.
  */
 export function buildMariaDbIni(dirs: WorkspaceDirectories): string {
-  const normRoot = normalizePath(dirs.root);
+  const normBinMariadb = normalizePath(dirs.binMariadb);
   const normData = normalizePath(dirs.data);
   const normLogs = normalizePath(dirs.logs);
   const normTmp = normalizePath(dirs.tmp);
@@ -29,7 +29,7 @@ socket = "${normTmp}/mysql.sock"
 pid-file = "${normTmp}/mysqld.pid"
 
 # Paths (Normalized forward-slashes)
-basedir = "${normRoot}/bin/mariadb"
+basedir = "${normBinMariadb}"
 datadir = "${normData}"
 tmpdir = "${normTmp}"
 
