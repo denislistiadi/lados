@@ -53,6 +53,27 @@ async function copyAllLogs() {
     console.error("Failed to copy logs:", err);
   }
 }
+
+function getLogTextClass(log: { type: string; message: string }): string {
+  if (log.type === "system") {
+    return "text-amber-300 font-semibold";
+  }
+  if (log.type === "stdout") {
+    return "text-slate-200";
+  }
+  // For stderr: distinguish between genuine errors, warnings, and informational notices
+  const lower = log.message.toLowerCase();
+  if (lower.includes("[error]") || lower.includes("fatal error") || lower.includes("[process error]")) {
+    return "text-rose-400 font-medium";
+  }
+  if (lower.includes("[warning]") || lower.includes("[warn]")) {
+    return "text-amber-400";
+  }
+  if (lower.includes("[note]") || lower.includes("[info]") || lower.includes("[notice]")) {
+    return "text-slate-300";
+  }
+  return "text-rose-400 font-medium";
+}
 </script>
 
 <template>
@@ -163,11 +184,7 @@ async function copyAllLogs() {
         <!-- Message Body -->
         <span
           class="break-all flex-1"
-          :class="{
-            'text-slate-200': log.type === 'stdout',
-            'text-rose-400 font-medium': log.type === 'stderr',
-            'text-amber-300 font-semibold': log.type === 'system',
-          }"
+          :class="getLogTextClass(log)"
         >
           {{ log.message }}
         </span>
