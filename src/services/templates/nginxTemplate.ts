@@ -28,6 +28,13 @@ http {
     include       mime.types;
     default_type  application/octet-stream;
 
+    # Explicit temporary directory paths (prevents Windows CreateDirectory error)
+    client_body_temp_path "${normTmp}/client_body_temp";
+    proxy_temp_path       "${normTmp}/proxy_temp";
+    fastcgi_temp_path     "${normTmp}/fastcgi_temp";
+    uwsgi_temp_path       "${normTmp}/uwsgi_temp";
+    scgi_temp_path        "${normTmp}/scgi_temp";
+
     # Logging settings
     log_format  main  '$remote_addr - $remote_user [$time_local] "$request" '
                       '$status $body_bytes_sent "$http_referer" '
