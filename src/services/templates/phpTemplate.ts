@@ -3,10 +3,11 @@ import { type WorkspaceDirectories, normalizePath } from "../workspace";
 /**
  * Builds standard PHP php.ini configuration with absolute forward-slash paths.
  */
-export function buildPhpIni(dirs: WorkspaceDirectories): string {
+export function buildPhpIni(dirs: WorkspaceDirectories, activePhpDir?: string): string {
   const normRoot = normalizePath(dirs.root);
   const normLogs = normalizePath(dirs.logs);
   const normTmp = normalizePath(dirs.tmp);
+  const extDir = activePhpDir ? `${normalizePath(activePhpDir)}/ext` : `${normRoot}/bin/php/ext`;
 
   return `; ====================================================================
 ; LADOS Portable PHP Configuration
@@ -52,7 +53,7 @@ upload_max_filesize = 128M
 max_file_uploads = 20
 
 ; Paths and Directories
-extension_dir = "${normRoot}/bin/php/ext"
+extension_dir = "${extDir}"
 sys_temp_dir = "${normTmp}"
 enable_dl = Off
 cgi.fix_pathinfo = 1

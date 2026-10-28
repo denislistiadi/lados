@@ -34,9 +34,9 @@ export interface ConfigGenerationResult {
 /**
  * Automatically writes or updates etc/nginx/nginx.conf, etc/php/php.ini, and etc/mariadb/my.ini.
  */
-export async function generateAllConfigs(dirs: WorkspaceDirectories): Promise<ConfigGenerationResult> {
+export async function generateAllConfigs(dirs: WorkspaceDirectories, activePhpDir?: string): Promise<ConfigGenerationResult> {
   const nginxConfContent = buildNginxConfig(dirs);
-  const phpIniContent = buildPhpIni(dirs);
+  const phpIniContent = buildPhpIni(dirs, activePhpDir);
   const mariaDbIniContent = buildMariaDbIni(dirs);
   const mimeTypesContent = buildMimeTypes();
   const fastcgiParamsContent = buildFastCgiParams();

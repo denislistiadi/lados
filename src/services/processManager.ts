@@ -4,6 +4,7 @@ import {
   isTauri,
   type WorkspaceDirectories,
 } from "./workspace";
+import { phpVersionManager } from "./phpVersionManager";
 import { generateAllConfigs } from "./configGenerator";
 import {
   type ServiceType,
@@ -62,7 +63,8 @@ class ProcessManagerService {
 
   public async ensureConfigurations(dirs: WorkspaceDirectories): Promise<void> {
     try {
-      await generateAllConfigs(dirs);
+      const activePhpDir = await phpVersionManager.getActivePhpPath();
+      await generateAllConfigs(dirs, activePhpDir);
     } catch (err) {
       console.warn("Failed to generate default configs:", err);
     }
@@ -153,7 +155,8 @@ class ProcessManagerService {
     }
 
     try {
-      const { command, args, programName } = await createPhpCommand(dirs);
+      const activePhpDir = await phpVersionManager.getActivePhpPath();
+      const { command, args, programName } = await createPhpCommand(dirs, activePhpDir);
       this.emitLog("php", "system", `Command: ${programName} ${args.join(" ")}`);
       bindProcessEvents("php", command, () => this.activeChildren.delete("php"));
 
@@ -188,8 +191,8 @@ class ProcessManagerService {
     }
 
     try {
-      const { command, args } = await createMariaDbCommand(dirs);
-      this.emitLog("mariadb", "system", `Command: mysqld ${args.join(" ")}`);
+      const { command, args, programName } = await createMariaDbCommand(dirs);
+      this.emitLog("mariadb", "system", `Command: ${programName} ${args.join(" ")}`);
       bindProcessEvents("mariadb", command, () => this.activeChildren.delete("mariadb"));
 
       const child = await command.spawn();

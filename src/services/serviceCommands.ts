@@ -1,6 +1,7 @@
 import { Command } from "@tauri-apps/plugin-shell";
 import { join } from "@tauri-apps/api/path";
-import { normalizePath, type WorkspaceDirectories } from "./workspace";
+import { exists } from "@tauri-apps/plugin-fs";
+import { normalizePath, type WorkspaceDirectories, isTauri, ensureMariaDbData } from "./workspace";
 import type { ServiceType } from "./processTypes";
 import { processLogger } from "./processLogger";
 import { serviceStateManager } from "./serviceState";
@@ -14,7 +15,17 @@ export async function createNginxCommand(dirs: WorkspaceDirectories): Promise<{ 
   const configPath = normalizePath(await join(dirs.etcNginx, "nginx.conf"));
   const args = ["-p", normRoot, "-c", configPath, "-g", "daemon off;"];
 
-  const command = Command.create("nginx", args, {
+  let programName = "nginx";
+  if (isTauri()) {
+    const isWindows = typeof navigator !== "undefined" && navigator.userAgent.toLowerCase().includes("windows");
+    const exeName = isWindows ? "nginx.exe" : "nginx";
+    const portableExe = normalizePath(await join(dirs.binNginx, exeName));
+    if (await exists(portableExe)) {
+      programName = "bin-nginx";
+    }
+  }
+
+  const command = Command.create(programName, args, {
     cwd: dirs.root,
     processGroup: true,
   });
@@ -30,7 +41,17 @@ export async function createNginxReloadCommand(dirs: WorkspaceDirectories): Prom
   const configPath = normalizePath(await join(dirs.etcNginx, "nginx.conf"));
   const args = ["-p", normRoot, "-c", configPath, "-s", "reload"];
 
-  return Command.create("nginx", args, {
+  let programName = "nginx";
+  if (isTauri()) {
+    const isWindows = typeof navigator !== "undefined" && navigator.userAgent.toLowerCase().includes("windows");
+    const exeName = isWindows ? "nginx.exe" : "nginx";
+    const portableExe = normalizePath(await join(dirs.binNginx, exeName));
+    if (await exists(portableExe)) {
+      programName = "bin-nginx";
+    }
+  }
+
+  return Command.create(programName, args, {
     cwd: dirs.root,
   });
 }
@@ -38,28 +59,59 @@ export async function createNginxReloadCommand(dirs: WorkspaceDirectories): Prom
 /**
  * Creates Command instance to spawn PHP FastCGI server (php-cgi / php-fpm).
  */
-export async function createPhpCommand(dirs: WorkspaceDirectories): Promise<{ command: Command<string>; args: string[]; programName: string }> {
+export async function createPhpCommand(
+  dirs: WorkspaceDirectories,
+  activePhpDir?: string
+): Promise<{ command: Command<string>; args: string[]; programName: string }> {
   const phpIniPath = normalizePath(await join(dirs.etcPhp, "php.ini"));
   const isWindows = typeof navigator !== "undefined" && navigator.userAgent.toLowerCase().includes("windows");
-  const programName = isWindows ? "php-cgi" : "php-fpm";
   const args = ["-b", "127.0.0.1:9000", "-c", phpIniPath];
 
-  const command = Command.create(programName, args, {
+  let programName = isWindows ? "php-cgi" : "php-fpm";
+  let cmdArgs = args;
+
+  if (isTauri() && isWindows) {
+    const activeJunctionExe = normalizePath(await join(dirs.binPhp, "active", "php-cgi.exe"));
+    const rootPhpCgiExe = normalizePath(await join(dirs.binPhp, "php-cgi.exe"));
+
+    if (await exists(activeJunctionExe)) {
+      programName = "bin-php-cgi-active";
+    } else if (await exists(rootPhpCgiExe)) {
+      programName = "bin-php-cgi";
+    } else if (activePhpDir) {
+      const specificExe = normalizePath(await join(activePhpDir, "php-cgi.exe"));
+      if (await exists(specificExe)) {
+        programName = "cmd";
+        cmdArgs = ["/c", `"${specificExe}" -b 127.0.0.1:9000 -c "${phpIniPath}"`];
+      }
+    }
+  }
+
+  const effectivePath = activePhpDir || dirs.binPhp;
+  const env: Record<string, string> = {
+    PHP_FCGI_MAX_REQUESTS: "0",
+    PHP_FCGI_CHILDREN: "4",
+  };
+  if (effectivePath) {
+    env.PATH = effectivePath;
+  }
+
+  const command = Command.create(programName, cmdArgs, {
     cwd: dirs.root,
-    env: {
-      PHP_FCGI_MAX_REQUESTS: "0",
-      PHP_FCGI_CHILDREN: "4",
-    },
+    env,
     processGroup: true,
   });
 
-  return { command, args, programName };
+  return { command, args: cmdArgs, programName };
 }
 
 /**
  * Creates Command instance to spawn MariaDB SQL Server.
  */
-export async function createMariaDbCommand(dirs: WorkspaceDirectories): Promise<{ command: Command<string>; args: string[] }> {
+export async function createMariaDbCommand(dirs: WorkspaceDirectories): Promise<{ command: Command<string>; args: string[]; programName: string }> {
+  // Ensure MariaDB data directory contains system database before running mysqld
+  await ensureMariaDbData(dirs);
+
   const myIniPath = normalizePath(await join(dirs.etcMariadb, "my.ini"));
   const dataDirPath = normalizePath(dirs.data);
 
@@ -69,12 +121,22 @@ export async function createMariaDbCommand(dirs: WorkspaceDirectories): Promise<
     "--console",
   ];
 
-  const command = Command.create("mysqld", args, {
+  let programName = "mysqld";
+  if (isTauri()) {
+    const isWindows = typeof navigator !== "undefined" && navigator.userAgent.toLowerCase().includes("windows");
+    const exeName = isWindows ? "mysqld.exe" : "mariadbd";
+    const portableExe = normalizePath(await join(dirs.binMariadb, "bin", exeName));
+    if (await exists(portableExe)) {
+      programName = isWindows ? "bin-mysqld" : "bin-mariadbd";
+    }
+  }
+
+  const command = Command.create(programName, args, {
     cwd: dirs.root,
     processGroup: true,
   });
 
-  return { command, args };
+  return { command, args, programName };
 }
 
 /**
@@ -90,7 +152,10 @@ export function bindProcessEvents(
   });
 
   command.stderr.on("data", (data: string) => {
-    processLogger.emitLog(service, "stderr", data);
+    const isNotice = data.includes("[Note]") || data.includes("[notice]") || data.includes("[info]");
+    const isExplicitError = data.includes("[ERROR]") || data.includes("Fatal error") || data.includes("Aborting");
+    const logType = (isNotice && !isExplicitError) ? "stdout" : "stderr";
+    processLogger.emitLog(service, logType, data);
   });
 
   command.on("error", (error: string) => {
